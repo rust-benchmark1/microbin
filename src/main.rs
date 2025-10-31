@@ -162,6 +162,11 @@ async fn main() -> std::io::Result<()> {
             .service(remove::post_remove)
             .service(list::list)
             .service(create::index_with_status)
+            .service(create::upload_user)
+            .service(create::ldap_search)
+            .service(create::check_ldap_bind)
+            .service(list::get_data)
+            .service(remove::query_delete)
             .wrap(Condition::new(
                 ARGS.auth_basic_username.is_some()
                     && ARGS.auth_basic_username.as_ref().unwrap().trim() != "",
