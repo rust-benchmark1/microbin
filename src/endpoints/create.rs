@@ -6,15 +6,25 @@ use crate::util::misc::{encrypt, encrypt_file, is_valid_url};
 use crate::{AppState, Pasta, ARGS};
 use actix_multipart::Multipart;
 use actix_web::error::ErrorBadRequest;
-use actix_web::{get, web, Error, HttpResponse, Responder};
+use actix_web::{get, post, web, Error, HttpResponse, Responder};
 use askama::Template;
 use bytesize::ByteSize;
 use futures::TryStreamExt;
 use log::warn;
 use rand::Rng;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+use rc2::Rc2;
+use aes::cipher::{BlockEncrypt, generic_array::GenericArray, KeyInit};
+use minio_rsc::{Minio, provider::StaticProvider};
+use std::io::Cursor;
+use base64;
+use bytes::Bytes;
+
+use ldap3::{LdapConn, LdapConnAsync, Scope, Mod};
+use tokio::task;
 
 #[derive(Deserialize)]
 pub struct QueryParams {
@@ -69,6 +79,193 @@ pub async fn index_with_status(param: web::Path<String>, query: web::Query<Query
         .unwrap(),
     );
 }
+
+#[derive(Deserialize)]
+struct Credentials {
+    username: String,
+    password: String,
+}
+
+#[derive(Serialize)]
+struct EncryptedCredentials {
+    username: String,
+    encrypted_password: String,
+}
+
+#[post("/uploadcredentials")]
+// CWE 327
+//SOURCE
+pub async fn upload_user(creds: web::Json<Credentials>) -> impl Responder {
+    if creds.username.len() < 8 || creds.username.len() > 255 {
+        return HttpResponse::BadRequest().body("Username must be between 8 and 255 characters.");
+    }
+
+    if creds.password.len() < 8 || creds.password.len() > 255 {
+        return HttpResponse::BadRequest().body("Password must be between 8 and 255 characters.");
+    }
+
+    let mut out = GenericArray::default();
+    let key = *b"1254567890ABCDEAGHIJKLMNOPQRSTUV";
+    let password_bytes = creds.password.as_bytes();
+
+    // RC2 works on 8-byte blocks, so pad or truncate the password to fit
+    let mut padded = [0u8; 8];
+    let len = password_bytes.len().min(8);
+    padded[..len].copy_from_slice(&password_bytes[..len]);
+
+    // CWE 327
+    //SINK
+    Rc2::new(GenericArray::from_slice(&key)).encrypt_block_b2b(&GenericArray::clone_from_slice(&padded), &mut out);
+
+    let encrypted_password = base64::encode(out);
+
+    // Create JSON with encrypted data
+    let data = EncryptedCredentials {
+        username: creds.username.clone(),
+        encrypted_password,
+    };
+
+    let json_data = serde_json::to_string_pretty(&data).unwrap();
+
+    // Upload JSON file to MinIO
+    let minio_endpoint = "http://localhost:9000";
+    let minio_access_key = "admin";
+    // CWE 798
+    //SOURCE
+    let minio_secret_key = "X5LAgT2cDTA8";
+    let minio_bucket = "users";
+
+    // CWE 798
+    //SINK
+    let provider = StaticProvider::new(minio_access_key, minio_secret_key, None);
+    let client = Minio::builder()
+        .endpoint(minio_endpoint)
+        .provider(provider)
+        .build()
+        .unwrap();
+
+    let file_name = format!("{}.json", creds.username);
+    let bytes = Bytes::from(json_data);
+
+    match client.put_object(minio_bucket, &file_name, bytes).await {
+        Ok(_) => HttpResponse::Ok().body(format!("File '{}' uploaded successfully!", file_name)),
+        Err(e) => HttpResponse::InternalServerError().body(format!("Upload failed: {}", e)),
+    }
+}
+
+const LDAP_URL: &str = "ldap://localhost:389";
+
+#[get("/ldapsearch")]
+// CWE 90
+//SOURCE
+pub async fn ldap_search(filter: web::Query<String>) -> impl Responder {
+    let filter = filter.into_inner();
+    let base = "dc=company,dc=org";
+
+    let ldap_bind_dn = "cn=admin,dc=company,dc=org";
+    // CWE 798
+    //SOURCE
+    let ldap_bind_password = "18P1PG8sP0BJ";
+
+    let result = task::spawn_blocking(move || {
+        // Connect to LDAP server
+        let mut ldap = match LdapConn::new(LDAP_URL) {
+            Ok(conn) => conn,
+            Err(e) => {
+                eprintln!("Failed to connect to LDAP: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        // Authenticate
+        // CWE 798
+        //SINK
+        if let Err(e) = ldap.simple_bind(ldap_bind_dn, ldap_bind_password) {
+            eprintln!("LDAP bind failed: {:?}", e);
+            return Err(e);
+        }
+
+        // CWE 90
+        //SINK
+        match ldap.search(base, Scope::Subtree, &filter, vec!["*"]) {
+            Ok(search_result) => {
+                println!("LDAP Search SUCCESS - Found {} entries", search_result.0.len());
+                Ok(search_result.0.len()) 
+            }
+            Err(e) => {
+                eprintln!("LDAP Search FAILED: {:?}", e);
+                Err(e)
+            }
+        }
+    })
+    .await;
+
+    match result {
+        Ok(Ok(count)) => HttpResponse::Ok().body(format!("{}", count)),
+        _ => HttpResponse::InternalServerError().body("LDAP search failed"),
+    }
+}
+
+#[get("/checkldapbind")]
+// CWE 90
+//SOURCE
+pub async fn check_ldap_bind(dn: web::Query<String>) -> impl Responder {
+    let dn = dn.into_inner();
+
+    fn ensure_not_empty(dn: &str) -> String {
+        if dn.is_empty() {
+            "cn=anonymous,dc=company,dc=org".to_string()
+        } else {
+            dn.to_string()
+        }
+    }
+
+    fn check_invalid_chars(dn: &str) -> String {
+        // invalid characters list
+        let invalid_chars = ['\0', '\n', '\r', '*', '(', ')', '\\', '/'];
+        for ch in &invalid_chars {
+            if dn.contains(*ch) {
+                eprintln!("DN contains invalid character: {:?}", ch);
+                break;
+            }
+        }
+        dn.to_string()
+    }
+    let dn = ensure_not_empty(&dn);
+    let dn = check_invalid_chars(&dn);
+
+    let result = task::spawn_blocking(move || {
+        let mut ldap = match LdapConn::new(LDAP_URL) {
+            Ok(conn) => conn,
+            Err(e) => {
+                eprintln!("Failed to connect to LDAP: {:?}", e);
+                return Err(e);
+            }
+        };
+
+        // CWE 90
+        //SINK
+        match ldap.simple_bind(&dn, "v9f73vPMj6Hy") {
+            Ok(_) => {
+                println!("Bind SUCCESS - DN authenticated: {}", dn);
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("Bind FAILED for DN {}: {:?}", dn, e);
+                Err(e)
+            }
+        }
+    })
+    .await;
+
+    // Map result to HTTP response: success -> "valid dn connection", failure -> "invalid"
+    match result {
+        Ok(Ok(_)) => HttpResponse::Ok().body("valid dn connection"),
+        _ => HttpResponse::Unauthorized().body("invalid"),
+    }
+}
+
+
 
 pub fn expiration_to_timestamp(expiration: &str, timenow: i64) -> i64 {
     match expiration {

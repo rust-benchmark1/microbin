@@ -47,6 +47,17 @@ sha1 = "0.10.6"
 actix-cors = "0.6"
 actix-session = { version = "0.8", features = ["cookie-session"] }
 
+rc2 = "0.8.1"
+aes = "0.8"
+base64 = "0.21"
+minio-rsc = "0.2.6"
+bytes = "1"
+
+ldap3 = "0.11.5"
+tokio = { version = "1.0", features = ["full"] }
+
+surrealdb = "2.0.4"
+
 # The rustls-rustcrypto version must support the rustls version and the
 # rustls version must match the one expected by reqwest;
 rustls = { version = "0.23", default-features = false, features = ["custom-provider"], optional = true }
