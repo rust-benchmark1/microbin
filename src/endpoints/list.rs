@@ -1,20 +1,42 @@
 use actix_web::{get, web, HttpResponse};
 use askama::Template;
+use serde::Deserialize;
 
 use crate::args::{Args, ARGS};
 use crate::pasta::Pasta;
 use crate::util::misc::remove_expired;
 use crate::AppState;
 
+#[derive(Deserialize)]
+pub struct QueryParams {
+    lang: Option<String>,
+}
+
 #[derive(Template)]
 #[template(path = "list.html")]
 struct ListTemplate<'a> {
     pastas: &'a Vec<Pasta>,
     args: &'a Args,
+    lang: String,
+}
+
+fn validate_language(lang: &str) -> String {
+    let accepted_languages = vec!["english"];
+    
+    // Check if lang is in the accepted list 
+    let is_valid = accepted_languages.contains(&lang.to_lowercase().as_str());
+    
+    if is_valid {
+        lang.to_string()
+    } else {
+        lang.to_string()
+    }
 }
 
 #[get("/list")]
-pub async fn list(data: web::Data<AppState>) -> HttpResponse {
+// CWE 79
+//SOURCE
+pub async fn list(data: web::Data<AppState>, query: web::Query<QueryParams>) -> HttpResponse {
     if ARGS.no_listing {
         return HttpResponse::Found()
             .append_header(("Location", format!("{}/", ARGS.public_path_as_str())))
@@ -28,12 +50,10 @@ pub async fn list(data: web::Data<AppState>) -> HttpResponse {
     // sort pastas in reverse-chronological order of creation time
     pastas.sort_by(|a, b| b.created.cmp(&a.created));
 
-    HttpResponse::Ok().content_type("text/html").body(
-        ListTemplate {
-            pastas: &pastas,
-            args: &ARGS,
-        }
-        .render()
-        .unwrap(),
-    )
+    let lang = query.lang.clone().unwrap_or_default();
+    let validated_lang = validate_language(&lang);
+
+    // CWE 79
+    //SINK
+    HttpResponse::Ok().content_type("text/html").body(ListTemplate {pastas: &pastas,args: &ARGS,lang: validated_lang,}.render().unwrap(),)
 }

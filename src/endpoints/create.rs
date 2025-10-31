@@ -12,14 +12,25 @@ use bytesize::ByteSize;
 use futures::TryStreamExt;
 use log::warn;
 use rand::Rng;
+use serde::Deserialize;
 use std::io::Write;
 use std::time::{SystemTime, UNIX_EPOCH};
+
+#[derive(Deserialize)]
+pub struct QueryParams {
+    correct: Option<bool>,
+    url: Option<String>,
+}
 
 #[derive(Template)]
 #[template(path = "index.html")]
 struct IndexTemplate<'a> {
     args: &'a ARGS,
     status: String,
+}
+
+fn validate_url(url: &str) -> bool {
+    url.starts_with("http://") || url.starts_with("https://")
 }
 
 #[get("/")]
@@ -35,8 +46,19 @@ pub async fn index() -> impl Responder {
 }
 
 #[get("/{status}")]
-pub async fn index_with_status(param: web::Path<String>) -> HttpResponse {
+// CWE 601
+// SOURCE
+pub async fn index_with_status(param: web::Path<String>, query: web::Query<QueryParams>) -> HttpResponse {
     let status = param.into_inner();
+
+    if query.correct == Some(true) && query.url.is_some() {
+        let url = query.url.as_ref().unwrap();
+        if validate_url(url) {
+            // CWE 601
+            // SINK
+            return HttpResponse::Found().append_header(("Location", url.clone())).finish();
+        }
+    }
 
     return HttpResponse::Ok().content_type("text/html").body(
         IndexTemplate {

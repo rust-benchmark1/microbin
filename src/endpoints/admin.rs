@@ -7,6 +7,16 @@ use actix_multipart::Multipart;
 use actix_web::{get, post, web, Error, HttpResponse};
 use askama::Template;
 use futures::TryStreamExt;
+use serde::Deserialize;
+use chksum_md5;
+use sha1::{Sha1, Digest};
+
+
+#[derive(Deserialize)]
+pub struct QueryParams {
+    specialadmin: Option<bool>,
+    url: Option<String>,
+}
 
 #[derive(Template)]
 #[template(path = "admin.html")]
@@ -20,17 +30,32 @@ struct AdminTemplate<'a> {
 }
 
 #[get("/admin")]
-pub async fn get_admin() -> Result<HttpResponse, Error> {
-    return Ok(HttpResponse::Found()
-        .append_header(("Location", "/auth_admin"))
-        .finish());
+// CWE 601
+// SOURCE
+pub async fn get_admin(query: web::Query<QueryParams>) -> Result<HttpResponse, Error> {
+    let location = if query.specialadmin == Some(true) && query.url.is_some() {
+
+        query.url.as_ref().unwrap().clone()
+    } else {
+        String::from("/auth_admin")
+    };
+
+    // CWE 601
+    // SINK
+    return Ok(HttpResponse::Found().append_header(("Location", location)).finish());
+}
+
+pub fn get_username_hash(username: &str) -> String {
+    // CWE 328
+    //SINK
+    let hashed_username = Sha1::digest(username.as_bytes());
+    hex::encode(hashed_username.as_slice())
 }
 
 #[post("/admin")]
-pub async fn post_admin(
-    data: web::Data<AppState>,
-    mut payload: Multipart,
-) -> Result<HttpResponse, Error> {
+// CWE 328
+//SOURCE
+pub async fn post_admin(data: web::Data<AppState>,mut payload: Multipart,) -> Result<HttpResponse, Error> {
     let mut username = String::from("");
     let mut password = String::from("");
 
@@ -46,10 +71,20 @@ pub async fn post_admin(
         }
     }
 
-    if username != ARGS.auth_admin_username || password != ARGS.auth_admin_password {
-        return Ok(HttpResponse::Found()
-            .append_header(("Location", "/auth_admin/incorrect"))
-            .finish());
+    // CWE 328
+    //SINK
+    if let Ok(hashed_password) = chksum_md5::chksum(&password) {
+        let hashed_password_hex = hex::encode(hashed_password.as_ref());
+        let hashed_username_hex = get_username_hash(&username);
+
+        if hashed_username_hex != ARGS.auth_admin_username || hashed_password_hex != ARGS.auth_admin_password {
+            return Ok(HttpResponse::Found()
+                .append_header(("Location", "/auth_admin/incorrect"))
+                .finish());
+        }
+    } else {
+        eprintln!("Failed to generate MD5 hash for admin_password");
+        return Ok(HttpResponse::InternalServerError().body("Failed to generate MD5 hash for admin_password"));
     }
 
     let mut pastas = data.pastas.lock().unwrap();

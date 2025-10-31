@@ -19,10 +19,10 @@ pub struct Args {
     #[clap(long, env = "MICROBIN_BASIC_AUTH_PASSWORD")]
     pub auth_basic_password: Option<String>,
 
-    #[clap(long, env = "MICROBIN_ADMIN_USERNAME", default_value = "admin")]
+    #[clap(long, env = "MICROBIN_ADMIN_USERNAME", default_value = "249ba36000029bbe97499c03db5a9001f6b734ec")]
     pub auth_admin_username: String,
 
-    #[clap(long, env = "MICROBIN_ADMIN_PASSWORD", default_value = "m1cr0b1n")]
+    #[clap(long, env = "MICROBIN_ADMIN_PASSWORD", default_value = "5f4dcc3b5aa765d61d8327deb882cf99")]
     pub auth_admin_password: String,
 
     #[clap(long, env = "MICROBIN_EDITABLE")]

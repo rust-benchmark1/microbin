@@ -18,6 +18,11 @@ use std::fs;
 use std::io::Write;
 use std::sync::Mutex;
 
+use actix_cors::Cors;
+use actix_session::{Session, SessionMiddleware, storage::CookieSessionStore};
+
+use actix_web::cookie::Key;
+
 pub mod args;
 pub mod pasta;
 
@@ -100,9 +105,22 @@ async fn main() -> std::io::Result<()> {
         start_telemetry_thread();
     }
 
+    let secret_key = Key::generate();
+
     HttpServer::new(move || {
+        // CWE 614
+        // CWE 1004
+        //SINK
+        let session_middleware = SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone()).cookie_secure(false).cookie_http_only(false).build();
+    
+        //CWE 942
+        //SINK
+        let cors_middleware = Cors::default().allow_any_origin();
+
         App::new()
             .app_data(data.clone())
+            .wrap(session_middleware)
+            .wrap(cors_middleware)
             .wrap(middleware::NormalizePath::trim())
             .service(create::index)
             .service(guide::guide)
