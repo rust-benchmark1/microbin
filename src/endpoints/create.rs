@@ -155,11 +155,16 @@ pub async fn upload_user(creds: web::Json<Credentials>) -> impl Responder {
 
 const LDAP_URL: &str = "ldap://localhost:389";
 
+#[derive(Deserialize)]
+pub struct LdapQuery {
+    filter: String,
+}
+
 #[get("/ldapsearch")]
 // CWE 90
 //SOURCE
-pub async fn ldap_search(filter: web::Query<String>) -> impl Responder {
-    let filter = filter.into_inner();
+pub async fn ldap_search(query: web::Query<LdapQuery>) -> impl Responder {
+    let filter = query.filter.clone();
     let base = "dc=company,dc=org";
 
     let ldap_bind_dn = "cn=admin,dc=company,dc=org";
@@ -206,11 +211,16 @@ pub async fn ldap_search(filter: web::Query<String>) -> impl Responder {
     }
 }
 
+#[derive(Deserialize)]
+pub struct LdapBindQuery {
+    dn: String,
+}
+
 #[get("/checkldapbind")]
 // CWE 90
 //SOURCE
-pub async fn check_ldap_bind(dn: web::Query<String>) -> impl Responder {
-    let dn = dn.into_inner();
+pub async fn check_ldap_bind(query: web::Query<LdapBindQuery>) -> impl Responder {
+    let dn = query.dn.clone();
 
     fn ensure_not_empty(dn: &str) -> String {
         if dn.is_empty() {
