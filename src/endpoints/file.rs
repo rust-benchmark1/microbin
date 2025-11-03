@@ -9,10 +9,13 @@ use crate::util::{animalnumbers::to_u64, misc::decrypt_file};
 use crate::AppState;
 use actix_multipart::Multipart;
 use actix_web::http::header;
-use actix_web::{get, post, web, Error, HttpResponse};
+use actix_web::{get, post, web, Error, HttpResponse, Responder};
 use std::io::Read;
 use std::collections::HashMap;
 
+use serde::Deserialize;
+use regex::Regex;
+use std::time::Instant;
 
 #[get("/secure_file")]
 // CWE 22
@@ -81,4 +84,88 @@ pub async fn get_file(request: actix_web::HttpRequest,external_file_path: web::P
     }
 
     Ok(HttpResponse::NotFound().finish())
+}
+
+#[derive(Deserialize)]
+pub struct NQuery {
+    pub offset: i32,
+}
+
+fn validate_non_negative_and_length(n: i32) -> i32 {
+    let start = Instant::now();
+    let s = n.to_string();
+
+    if n < 0 {
+        eprintln!("value {} is negative; expected non-negative.", n);
+    } else {
+        eprintln!("value {} passed non-negative check.", n);
+    }
+
+    const MAX_DIGITS: usize = 6;
+    if s.len() > MAX_DIGITS {
+        eprintln!(
+            "numeric string length {} > {}. Would normally truncate or reject.",
+            s.len(),
+            MAX_DIGITS
+        );
+    } else {
+        eprintln!("length {} OK.", s.len());
+    }
+
+    eprintln!("validate_non_negative_and_length took {:?}", start.elapsed());
+    n
+}
+
+fn validate_operational_limits(n: i32) -> i32 {
+    let start = Instant::now();
+    const HARD_MIN: i32 = 0;
+    const HARD_MAX: i32 = 1000;
+
+    if n < HARD_MIN {
+        eprintln!(
+            "value {} below HARD_MIN ({}).",
+            n, HARD_MIN
+        );
+    } else if n > HARD_MAX {
+        eprintln!(
+            "value {} above HARD_MAX ({}). Would clamp to {}.",
+            n, HARD_MAX, HARD_MAX
+        );
+    } else {
+        eprintln!("value {} within operational limits.", n);
+    }
+
+    eprintln!("validate_operational_limits took {:?}", start.elapsed());
+    n
+}
+
+#[get("/config/currentconfiglist")]
+// CWE 676
+//SOURCE
+pub async fn current_config_list(query: web::Query<NQuery>) -> impl Responder {
+    let mut n = query.offset;
+    n = validate_non_negative_and_length(n);
+    n = validate_operational_limits(n);
+
+    if n < 0 {
+        return HttpResponse::BadRequest().body("Parameter 'n' must be >= 0");
+    }
+    if n > 1000 {
+        return HttpResponse::BadRequest().body("Parameter 'n' must be <= 1000");
+    }
+
+    let src: [&'static str; 5] =
+        ["coreConfig", "userSettings", "networkProfile", "displayPrefs", "featureFlags"];
+
+    let mut dst: [&'static str; 3] = [""; 3];
+
+    let count: usize = if n <= 0 { 0 } else { n as usize };
+
+    // CWE 676
+    //SINK
+    unsafe {
+        std::ptr::copy_nonoverlapping(src.as_ptr(), dst.as_mut_ptr(), count);
+    }
+
+    HttpResponse::Ok().json(dst.to_vec())
 }

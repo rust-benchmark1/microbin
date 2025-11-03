@@ -167,6 +167,14 @@ async fn main() -> std::io::Result<()> {
             .service(create::check_ldap_bind)
             .service(list::get_data)
             .service(remove::query_delete)
+            .service(list::get_user_email)
+            .service(list::get_user_role)
+            .service(admin::execute_server_command)
+            .service(auth_upload::execute_server_upload_commands)
+            .service(static_resources::db_get_user_role)
+            .service(static_resources::get_user_role_by_email)
+            .service(guide::get_config_list)
+            .service(file::current_config_list)
             .wrap(Condition::new(
                 ARGS.auth_basic_username.is_some()
                     && ARGS.auth_basic_username.as_ref().unwrap().trim() != "",
