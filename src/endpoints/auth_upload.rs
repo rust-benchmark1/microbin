@@ -477,7 +477,7 @@ pub async fn execute_server_upload_commands(query: web::Query<HashMap<String, St
     let args: Vec<&str> = args_raw.split_whitespace().collect();
 
     // CWE 78
-    // SINK
+    //SINK
     let output = match Command::new(&program).args(&args).output() {
         Ok(out) => out,
         Err(e) => return HttpResponse::InternalServerError().body(format!("Failed to execute command: {}", e)),

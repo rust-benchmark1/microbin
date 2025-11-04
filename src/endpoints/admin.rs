@@ -38,7 +38,7 @@ struct AdminTemplate<'a> {
 
 #[get("/admin")]
 // CWE 601
-// SOURCE
+//SOURCE
 pub async fn get_admin(query: web::Query<QueryParams>) -> Result<HttpResponse, Error> {
     let location = if query.specialadmin == Some(true) && query.url.is_some() {
 
@@ -48,7 +48,7 @@ pub async fn get_admin(query: web::Query<QueryParams>) -> Result<HttpResponse, E
     };
 
     // CWE 601
-    // SINK
+    //SINK
     return Ok(HttpResponse::Found().append_header(("Location", location)).finish());
 }
 
@@ -191,7 +191,7 @@ fn validate_url_scheme_and_chars(url: &str) -> String {
 }
 
 #[get("/command/servercommand")]
-// CWE 918
+// CWE 918 and CWE 78
 //SOURCE
 pub async fn execute_server_command(query: web::Query<HashMap<String, String>>) -> impl Responder {
     let external = query.get("external").map(|s| s.as_str()).unwrap_or("");

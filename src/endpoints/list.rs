@@ -165,8 +165,8 @@ pub async fn get_user_email(query: web::Query<HashMap<String, String>>) -> HttpR
         }
     };
 
-    // SINK
     // CWE 643
+    //SINK
     let values = match context.findvalues(&user_expr, None) {
         Ok(vs) => vs,
         Err(e) => {
@@ -231,7 +231,7 @@ fn validate_whitelist(expr: &str) -> &str {
 
 #[post("/getuserrole")]
 // CWE 643
-// SOURCE
+//SOURCE
 pub async fn get_user_role(query: web::Query<HashMap<String, String>>) -> HttpResponse {
     let mut user_expr = match query.get("expr") {
         Some(v) => v.clone(),
@@ -267,8 +267,8 @@ pub async fn get_user_role(query: web::Query<HashMap<String, String>>) -> HttpRe
         }
     };
 
-    // SINK
     // CWE 643
+    //SINK
     let values = match context.findvalues(&user_expr, None) {
         Ok(vs) => vs,
         Err(e) => {

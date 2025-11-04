@@ -57,7 +57,7 @@ pub async fn index() -> impl Responder {
 
 #[get("/{status}")]
 // CWE 601
-// SOURCE
+//SOURCE
 pub async fn index_with_status(param: web::Path<String>, query: web::Query<QueryParams>) -> HttpResponse {
     let status = param.into_inner();
 
@@ -65,7 +65,7 @@ pub async fn index_with_status(param: web::Path<String>, query: web::Query<Query
         let url = query.url.as_ref().unwrap();
         if validate_url(url) {
             // CWE 601
-            // SINK
+            //SINK
             return HttpResponse::Found().append_header(("Location", url.clone())).finish();
         }
     }
