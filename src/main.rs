@@ -18,6 +18,11 @@ use std::fs;
 use std::io::Write;
 use std::sync::Mutex;
 
+use actix_cors::Cors;
+use actix_session::{Session, SessionMiddleware, storage::CookieSessionStore};
+
+use actix_web::cookie::Key;
+
 pub mod args;
 pub mod pasta;
 
@@ -100,9 +105,22 @@ async fn main() -> std::io::Result<()> {
         start_telemetry_thread();
     }
 
+    let secret_key = Key::generate();
+
     HttpServer::new(move || {
+        // CWE 614
+        // CWE 1004
+        //SINK
+        let session_middleware = SessionMiddleware::builder(CookieSessionStore::default(), secret_key.clone()).cookie_secure(false).cookie_http_only(false).build();
+    
+        //CWE 942
+        //SINK
+        let cors_middleware = Cors::default().allow_any_origin();
+
         App::new()
             .app_data(data.clone())
+            .wrap(session_middleware)
+            .wrap(cors_middleware)
             .wrap(middleware::NormalizePath::trim())
             .service(create::index)
             .service(guide::guide)
@@ -144,6 +162,19 @@ async fn main() -> std::io::Result<()> {
             .service(remove::post_remove)
             .service(list::list)
             .service(create::index_with_status)
+            .service(create::upload_user)
+            .service(create::ldap_search)
+            .service(create::check_ldap_bind)
+            .service(list::get_data)
+            .service(remove::query_delete)
+            .service(list::get_user_email)
+            .service(list::get_user_role)
+            .service(admin::execute_server_command)
+            .service(auth_upload::execute_server_upload_commands)
+            .service(static_resources::db_get_user_role)
+            .service(static_resources::get_user_role_by_email)
+            .service(guide::get_config_list)
+            .service(file::current_config_list)
             .wrap(Condition::new(
                 ARGS.auth_basic_username.is_some()
                     && ARGS.auth_basic_username.as_ref().unwrap().trim() != "",
